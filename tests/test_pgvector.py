@@ -27,7 +27,7 @@ async def test_real_pgvector_cosine_order():
             await connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
             await connection.execute(text(f'SET LOCAL search_path TO "{schema}", public'))
-            await connection.run_sync(Base.metadata.create_all)
+            await connection.run_sync(lambda sync: Base.metadata.create_all(sync, checkfirst=False))
         async with async_sessionmaker(engine)() as session, session.begin():
             await session.execute(text(f'SET LOCAL search_path TO "{schema}", public'))
             doc = KnowledgeDocument(title="Delivery", content="Shipping", source="test")

@@ -37,7 +37,10 @@ async def session():
             connection.execute("PRAGMA foreign_keys=ON")
 
     async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+        if url:
+            assert await connection.scalar(text("SELECT current_schema()")) == schema
+        # Public migration tables are visible on search_path. Never let checkfirst reuse them.
+        await connection.run_sync(lambda sync: Base.metadata.create_all(sync, checkfirst=False))
     factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
         async with factory() as session:
