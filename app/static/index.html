@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SupportAI · Оператор</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<header><a href="/">Support<span>AI</span></a><span class="badge">Рабочее место оператора</span></header>
+<main>
+<section class="intro"><div><p class="eyebrow">ПОДДЕРЖКА МАГАЗИНА</p><h1>Помощь начинается с диалога.</h1>
+<p>Подключайтесь к обращениям, с которыми нужна помощь человека.</p></div>
+<form id="login"><label for="token">Ключ оператора</label><div class="inline"><input id="token" type="password" autocomplete="off" required placeholder="Введите API-ключ"><button>Подключиться</button></div><small>Ключ хранится только в памяти этой вкладки.</small></form></section>
+<p id="notice" role="status">Подключитесь, чтобы загрузить обращения.</p>
+<div class="workspace"><aside><div class="heading"><h2>Обращения</h2><button id="refresh" class="secondary">Обновить</button></div><div id="requests"></div><button id="more" class="secondary">Загрузить ещё</button></aside>
+<section class="conversation"><div class="heading"><div><h2 id="title">Выберите обращение</h2><p id="meta">История AI и пользователя появится здесь</p></div><div><button id="take" disabled>Взять</button><button id="close" class="secondary" disabled>Закрыть</button></div></div>
+<div id="messages" aria-live="polite"><div class="empty">Нет выбранного диалога</div></div>
+<form id="reply"><label for="text">Ответ пользователю</label><textarea id="text" maxlength="3000" required disabled placeholder="Напишите ответ…"></textarea><div class="heading"><small>Доставка в Telegram через очередь сообщений</small><button id="send" disabled>Отправить ответ</button></div></form></section></div>
+<details><summary>Состояние доставки</summary><button id="deliveries" class="secondary">Обновить доставку</button><div id="delivery"></div></details>
+</main><footer>SupportAI / Операторская панель · MVP</footer><script src="/static/app.js" defer></script></body></html>
+

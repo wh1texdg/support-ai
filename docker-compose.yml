@@ -1,0 +1,67 @@
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+asyncpg://support:${POSTGRES_PASSWORD:-support}@db:5432/support
+    REDIS_URL: redis://redis:6379/0
+    BACKEND_URL: http://backend:8000
+  restart: unless-stopped
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: support
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-support}
+      POSTGRES_DB: support
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U support -d support"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db: {condition: service_healthy}
+  backend:
+    <<: *app
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  bot:
+    <<: *app
+    command: ["python", "-m", "bot.main"]
+    depends_on:
+      backend: {condition: service_healthy}
+  worker:
+    <<: *app
+    command: ["python", "-m", "worker.main"]
+    depends_on:
+      backend: {condition: service_healthy}
+
+volumes:
+  postgres_data:
+  redis_data:
+
