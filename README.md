@@ -311,3 +311,13 @@ retention/удаление персональных данных; метрики
 Адаптер использует [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 и [Embeddings API](https://developers.openai.com/api/docs/guides/embeddings).
 Модели задаются через environment; доступность зависит от вашего API-аккаунта.
+
+### Polza AI
+
+Для Polza AI укажите в `.env` переменную `POLZA_AI_API_KEY`,
+`LLM_MODEL=openai/gpt-4.1-mini` и
+`EMBEDDING_MODEL=openai/text-embedding-3-small`.
+При наличии ключа Polza приложение использует `https://polza.ai/api/v1`
+для ответов и эмбеддингов; ключ OpenAI этому сервису не передаётся.
+После смены модели эмбеддингов выполните повторную индексацию базы знаний.
+Без ключа Polza сохраняется прямое подключение к OpenAI.

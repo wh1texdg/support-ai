@@ -27,6 +27,13 @@ def create_runtime():
     )
     # Missing key permits startup and operator-only operation; remote requests fail gracefully.
     client = AsyncOpenAI(
-        api_key=settings().openai_api_key.get_secret_value() or "unconfigured", timeout=20, max_retries=1
+        api_key=(
+            settings().polza_ai_api_key.get_secret_value()
+            or settings().openai_api_key.get_secret_value()
+            or "unconfigured"
+        ),
+        base_url="https://polza.ai/api/v1" if settings().polza_ai_api_key.get_secret_value() else None,
+        timeout=20,
+        max_retries=1,
     )
     return Runtime(redis, client, RAGService(EmbeddingService(client, redis)), OpenAIProvider(client))

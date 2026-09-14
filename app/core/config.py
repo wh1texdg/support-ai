@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     operator_keys: dict[str, str] = Field(default_factory=dict)
     bot_token: SecretStr = SecretStr("")
     openai_api_key: SecretStr = SecretStr("")
+    polza_ai_api_key: SecretStr = SecretStr("")
     llm_model: str = "gpt-4.1-mini"
     embedding_model: str = "text-embedding-3-small"
     similarity_threshold: float = Field(default=0.35, ge=0, le=1)

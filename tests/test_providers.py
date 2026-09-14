@@ -10,6 +10,25 @@ from app.services.embeddings import EmbeddingService
 from app.services.llm import OpenAIProvider
 
 
+@pytest.mark.parametrize("polza", [True, False])
+async def test_provider_credentials_stay_with_selected_endpoint(monkeypatch, polza):
+    from app.core.config import Settings
+    from app.services import runtime as module
+
+    config = Settings(
+        _env_file=None, openai_api_key="openai-test", polza_ai_api_key="polza-test" if polza else ""
+    )
+    monkeypatch.setattr(module, "settings", lambda: config)
+    runtime = module.create_runtime()
+    try:
+        assert runtime.client.api_key == ("polza-test" if polza else "openai-test")
+        assert str(runtime.client.base_url) == (
+            "https://polza.ai/api/v1/" if polza else "https://api.openai.com/v1/"
+        )
+    finally:
+        await runtime.close()
+
+
 async def test_structured_output_adapter_uses_official_sdk():
     def handle(request):
         payload = json.loads(request.content)
