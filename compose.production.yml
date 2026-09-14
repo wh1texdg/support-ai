@@ -1,0 +1,31 @@
+# Opt in to Telegram only after configuring credentials:
+# docker compose -f docker-compose.yml -f compose.production.yml --profile telegram up -d
+x-logs: &logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    mem_limit: 192m
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=30", "-c", "work_mem=2MB"]
+    logging: *logs
+  redis:
+    mem_limit: 64m
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "32mb", "--maxmemory-policy", "noeviction"]
+    logging: *logs
+  backend:
+    mem_limit: 256m
+    logging: *logs
+  migrate:
+    mem_limit: 192m
+    logging: *logs
+  bot:
+    profiles: ["telegram"]
+    mem_limit: 256m
+    logging: *logs
+  worker:
+    profiles: ["telegram"]
+    mem_limit: 192m
+    logging: *logs

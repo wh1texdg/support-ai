@@ -5,4 +5,8 @@ __pycache__
 .pytest_cache
 .ruff_cache
 *.egg-info
-
+.runtime
+*.zip
+*.log
+.env.*
+!.env.example

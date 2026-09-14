@@ -1,4 +1,5 @@
 x-app: &app
+  image: support-ai:${IMAGE_TAG:-local}
   build:
     context: .
     dockerfile: docker/Dockerfile
@@ -41,7 +42,7 @@ services:
       db: {condition: service_healthy}
   backend:
     <<: *app
-    ports: ["127.0.0.1:8000:8000"]
+    ports: ["127.0.0.1:${BACKEND_PORT:-8000}:8000"]
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
@@ -64,4 +65,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-
