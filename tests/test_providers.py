@@ -23,7 +23,7 @@ async def test_provider_credentials_stay_with_selected_endpoint(monkeypatch, pol
     try:
         assert runtime.client.api_key == ("polza-test" if polza else "openai-test")
         assert str(runtime.client.base_url) == (
-            "https://polza.ai/api/v1/" if polza else "https://api.openai.com/v1/"
+            "https://api.polza.ai/api/v1/" if polza else "https://api.openai.com/v1/"
         )
     finally:
         await runtime.close()

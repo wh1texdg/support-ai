@@ -32,7 +32,7 @@ def create_runtime():
             or settings().openai_api_key.get_secret_value()
             or "unconfigured"
         ),
-        base_url="https://polza.ai/api/v1" if settings().polza_ai_api_key.get_secret_value() else None,
+        base_url=settings().polza_base_url if settings().polza_ai_api_key.get_secret_value() else None,
         timeout=20,
         max_retries=1,
     )
