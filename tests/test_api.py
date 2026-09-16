@@ -174,3 +174,21 @@ def test_bot_buttons_match_conversation_state():
     assert all(b.callback_data != "operator" for row in keyboard(12).inline_keyboard for b in row)
     assert keyboard(offer=True).inline_keyboard[0][0].callback_data == "operator"
     assert keyboard(operator_mode=True).inline_keyboard[0][0].callback_data == "continue"
+
+
+async def test_topic_change_keeps_current_question_sources(client, runtime):
+    from app.services.llm import Answer
+
+    await send(client, "Доставка?", "delivery")
+    runtime.rag.search.reset_mock()
+    store = {"id": 9, "score": 0.8, "title": "Магазин", "source": "store", "content": "Демо-магазин"}
+    old = {"id": 1, "score": 0.9, "title": "Доставка", "source": "delivery", "content": "Доставка"}
+    runtime.rag.search.side_effect = [[store], [old]]
+    runtime.llm.generate_answer.return_value = Answer(
+        answer="Демо-магазин", insufficient=False, source_ids=[9]
+    )
+    result = (await send(client, "Какой у вас магазин?", "store")).json()
+    assert result["sources"][0]["id"] == 9
+    assert runtime.rag.search.await_args_list[0].args[1] == "Какой у вас магазин?"
+    context = runtime.llm.generate_answer.await_args.args[1]
+    assert [hit["id"] for hit in context] == [9, 1]

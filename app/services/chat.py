@@ -78,10 +78,15 @@ async def chat(session, runtime, data):
         answer = "Сообщение сохранено для оператора. Ожидайте ответа в этом чате или нажмите «Вернуться к AI», чтобы продолжить со мной."
     else:
         try:
-            # Include recent user subjects so follow-ups such as 'сколько он стоит' retrieve the product.
-            recent_questions = [m.content[:800] for m in history if m.sender_type == "user"][-2:]
-            query = "\n".join([*recent_questions, data.text])
-            hits = await runtime.rag.search(session, query)
+            # Retrieve the current question first so a topic change cannot be buried by history.
+            hits = await runtime.rag.search(session, data.text)
+            recent_questions = [
+                m.content[:800] for m in history if m.sender_type == "user" and not m.content.startswith("/")
+            ][-2:]
+            if recent_questions:
+                contextual = await runtime.rag.search(session, "\n".join([*recent_questions, data.text]))
+                seen = {hit["id"] for hit in hits}
+                hits.extend(hit for hit in contextual if hit["id"] not in seen)
             relevant = [hit for hit in hits if hit["score"] >= settings().similarity_threshold]
             if not relevant:
                 answer, offer, reason = UNKNOWN, True, "low_similarity"
