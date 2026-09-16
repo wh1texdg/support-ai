@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import httpx
 from openai import AsyncOpenAI
 from redis.asyncio import Redis
 
@@ -33,7 +34,12 @@ def create_runtime():
             or "unconfigured"
         ),
         base_url=settings().polza_base_url if settings().polza_ai_api_key.get_secret_value() else None,
-        timeout=20,
+        http_client=(
+            httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0"))
+            if settings().polza_ai_api_key.get_secret_value()
+            else None
+        ),
+        timeout=httpx.Timeout(20, connect=5),
         max_retries=1,
     )
     return Runtime(redis, client, RAGService(EmbeddingService(client, redis)), OpenAIProvider(client))
