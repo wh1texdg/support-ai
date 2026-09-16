@@ -32,7 +32,7 @@ class ResilientStorage(RedisStorage):
             log.warning("fsm_write_unavailable")
 
 
-def keyboard(message_id=None, offer=False):
+def keyboard(message_id=None, offer=False, operator_mode=False):
     rows = []
     if message_id:
         rows.append(
@@ -41,10 +41,11 @@ def keyboard(message_id=None, offer=False):
                 InlineKeyboardButton(text="👎 Не помогло", callback_data=f"vote:{message_id}:0"),
             ]
         )
-    rows.append([InlineKeyboardButton(text="Передать оператору", callback_data="operator")])
-    if offer:
-        rows.append([InlineKeyboardButton(text="Продолжить диалог", callback_data="continue")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    if offer and not operator_mode:
+        rows.append([InlineKeyboardButton(text="Передать оператору", callback_data="operator")])
+    if operator_mode:
+        rows.append([InlineKeyboardButton(text="Вернуться к AI", callback_data="continue")])
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
 async def send_chat(client, user, text, event_id, target):
@@ -68,7 +69,9 @@ async def send_chat(client, user, text, event_id, target):
         await target.answer(
             answer,
             reply_markup=keyboard(
-                data["message_id"] if data["status"] == "bot" else None, data["offer_operator"]
+                data["message_id"] if data["status"] == "bot" and data["sources"] else None,
+                data["offer_operator"],
+                data["status"] != "bot",
             ),
         )
     except (httpx.HTTPError, ValueError, KeyError):
@@ -76,13 +79,11 @@ async def send_chat(client, user, text, event_id, target):
         await target.answer("Сервис временно недоступен. Попробуйте позже или /operator.")
 
 
-@router.message(Command("start"))
-async def start(message: Message):
-    await message.answer(
-        "Здравствуйте! Я SupportAI. Отвечаю по базе знаний магазина. "
-        "Для связи с человеком используйте /operator. Не присылайте пароли и данные карты.",
-        reply_markup=keyboard(),
-    )
+@router.message(Command("start", "bot", "cancel"))
+async def start(message: Message, client):
+    if message.chat.type != "private":
+        return
+    await send_chat(client, message.from_user, message.text, f"msg:{message.message_id}", message)
 
 
 @router.message(F.text)
@@ -104,9 +105,11 @@ async def operator_callback(callback: CallbackQuery, client, state):
 
 
 @router.callback_query(F.data == "continue")
-async def continue_callback(callback: CallbackQuery, state):
+async def continue_callback(callback: CallbackQuery, client, state):
+    await callback.answer()
+    await send_chat(client, callback.from_user, "/bot", f"callback:{callback.id}", callback.message)
     await state.set_state(None)
-    await callback.answer("Напишите следующий вопрос в чат")
+    await callback.message.edit_reply_markup(reply_markup=None)
 
 
 @router.callback_query(F.data.startswith("vote:"))

@@ -139,3 +139,38 @@ async def test_embedding_failure_rolls_back_catalog(client, session, runtime):
     assert response.status_code == 503
     assert await session.scalar(select(func.count()).select_from(Product)) == 0
     assert await session.scalar(select(func.count()).select_from(KnowledgeDocument)) == 0
+
+
+async def test_return_to_ai_closes_request_and_resumes_search(client, session, runtime):
+    first = (await send(client, "/operator")).json()
+    request = await session.scalar(select(SupportRequest))
+    reset = (await send(client, "/bot", "reset")).json()
+    await session.refresh(request)
+    assert request.status == "closed"
+    assert reset["status"] == "bot"
+    assert reset["conversation_id"] != first["conversation_id"]
+    assert reset["offer_operator"] is False
+    assert (await send(client, "/bot", "reset")).json() == reset
+    assert (await client.post(f"/api/support/{request.id}/take", headers=OPERATOR)).status_code == 409
+    await send(client, "Доставка?", "next")
+    runtime.rag.search.assert_awaited_once()
+
+
+async def test_start_leaves_assigned_operator(client):
+    await send(client, "/operator")
+    request = (await client.get("/api/support/requests", headers=OPERATOR)).json()[0]
+    await client.post(f"/api/support/{request['id']}/take", headers=OPERATOR)
+    assert (await send(client, "/start", "start")).json()["status"] == "bot"
+    response = await client.post(
+        f"/api/support/{request['id']}/message", headers=OPERATOR, json={"text": "late"}
+    )
+    assert response.status_code == 409
+
+
+def test_bot_buttons_match_conversation_state():
+    from bot.main import keyboard
+
+    assert keyboard() is None
+    assert all(b.callback_data != "operator" for row in keyboard(12).inline_keyboard for b in row)
+    assert keyboard(offer=True).inline_keyboard[0][0].callback_data == "operator"
+    assert keyboard(operator_mode=True).inline_keyboard[0][0].callback_data == "continue"

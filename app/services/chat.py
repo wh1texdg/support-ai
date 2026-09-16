@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select, text
 
 from app.core.config import settings
-from app.database.models import Conversation, Feedback, IncomingEvent, Message, User, utcnow
+from app.database.models import Conversation, Feedback, IncomingEvent, Message, SupportRequest, User, utcnow
 from app.services.limits import rate_limit
 from app.services.support import HANDOFF, handoff
 
@@ -38,12 +38,22 @@ async def chat(session, runtime, data):
         .where(Conversation.user_id == user.id, Conversation.status != "closed")
         .with_for_update()
     )
+    restart = data.text.casefold().strip().split("@")[0] in {"/start", "/bot", "/cancel"}
+    if restart and conversation is not None:
+        request = await session.scalar(
+            select(SupportRequest).where(SupportRequest.conversation_id == conversation.id).with_for_update()
+        )
+        if request is not None:
+            request.status, request.closed_at = "closed", utcnow()
+        conversation.status, conversation.updated_at = "closed", utcnow()
+        await session.flush()
+        conversation = None
     if conversation is None:
         conversation = Conversation(user_id=user.id)
         session.add(conversation)
         await session.flush()
     explicit = asks_operator(data.text)
-    if conversation.status == "bot" and not explicit:
+    if conversation.status == "bot" and not explicit and not restart:
         await rate_limit(runtime.redis, data.telegram_id)
     history = list(
         (
@@ -59,11 +69,13 @@ async def chat(session, runtime, data):
     conversation.updated_at = utcnow()
     log.info("user_message conversation=%s chars=%s", conversation.id, len(data.text))
     sources, offer, reason = [], False, None
-    if explicit:
+    if restart:
+        answer = "Здравствуйте! Я SupportAI, помощник демо-магазина. Спросите о товарах, оплате или доставке. Для связи с человеком — /operator, для возврата ко мне — /bot."
+    elif explicit:
         await handoff(session, conversation, "user_requested")
         answer = HANDOFF
     elif conversation.status != "bot":
-        answer = "Сообщение сохранено для оператора. Ожидайте ответа в этом чате."
+        answer = "Сообщение сохранено для оператора. Ожидайте ответа в этом чате или нажмите «Вернуться к AI», чтобы продолжить со мной."
     else:
         try:
             # Include recent user subjects so follow-ups such as 'сколько он стоит' retrieve the product.
