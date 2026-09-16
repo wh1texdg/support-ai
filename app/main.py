@@ -94,4 +94,9 @@ async def ready(request: Request):
         await request.app.state.runtime.redis.ping()
     except Exception:
         return JSONResponse(status_code=503, content={"status": "unavailable"})
-    return {"status": "ok", "ai_configured": bool(settings().openai_api_key.get_secret_value())}
+    return {
+        "status": "ok",
+        "ai_configured": bool(
+            settings().polza_ai_api_key.get_secret_value() or settings().openai_api_key.get_secret_value()
+        ),
+    }
