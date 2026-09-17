@@ -1,11 +1,13 @@
+import asyncio
 import logging
 
 from fastapi import HTTPException
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 
 from app.core.config import settings
 from app.database.models import Conversation, Feedback, IncomingEvent, Message, SupportRequest, User, utcnow
 from app.services.limits import rate_limit
+from app.services.shop import WELCOME, shop_reply
 from app.services.support import HANDOFF, handoff
 
 log = logging.getLogger(__name__)
@@ -65,49 +67,74 @@ async def chat(session, runtime, data):
             )
         ).all()
     )[::-1]
-    session.add(Message(conversation_id=conversation.id, sender_type="user", content=data.text))
+    shop = await shop_reply(session, data.text) if conversation.status == "bot" and not restart else None
+    session.add(
+        Message(
+            conversation_id=conversation.id,
+            sender_type="user",
+            content=shop.subject if shop and shop.subject else data.text,
+        )
+    )
     conversation.updated_at = utcnow()
     log.info("user_message conversation=%s chars=%s", conversation.id, len(data.text))
     sources, offer, reason = [], False, None
     if restart:
-        answer = "Здравствуйте! Я SupportAI, помощник демо-магазина. Спросите о товарах, оплате или доставке. Для связи с человеком — /operator, для возврата ко мне — /bot."
+        answer = WELCOME
     elif explicit:
         await handoff(session, conversation, "user_requested")
         answer = HANDOFF
     elif conversation.status != "bot":
         answer = "Сообщение сохранено для оператора. Ожидайте ответа в этом чате или нажмите «Вернуться к AI», чтобы продолжить со мной."
+    elif shop is not None:
+        answer = shop.answer
     else:
         try:
-            # Retrieve the current question first so a topic change cannot be buried by history.
-            hits = await runtime.rag.search(session, data.text)
-            recent_questions = [
-                m.content[:800] for m in history if m.sender_type == "user" and not m.content.startswith("/")
-            ][-2:]
-            if recent_questions:
-                contextual = await runtime.rag.search(session, "\n".join([*recent_questions, data.text]))
-                seen = {hit["id"] for hit in hits}
-                hits.extend(hit for hit in contextual if hit["id"] not in seen)
-            relevant = [hit for hit in hits if hit["score"] >= settings().similarity_threshold]
-            if not relevant:
-                answer, offer, reason = UNKNOWN, True, "low_similarity"
-            else:
-                messages = [
-                    {"role": "user" if m.sender_type == "user" else "assistant", "content": m.content[:1500]}
+            async with asyncio.timeout(45):
+                # Retrieve the current question first so a topic change cannot be buried by history.
+                hits = await runtime.rag.search(session, data.text)
+                recent_questions = [
+                    m.content[:800]
                     for m in history
-                    if m.sender_type in ("user", "assistant")
-                ]
-                messages.append({"role": "user", "content": data.text})
-                result = await runtime.llm.generate_answer(messages, relevant)
-                allowed = {hit["id"] for hit in relevant}
-                if result.insufficient or not result.source_ids or not set(result.source_ids) <= allowed:
-                    answer, offer, reason = UNKNOWN, True, "insufficient_evidence"
+                    if m.sender_type == "user" and not m.content.startswith("/")
+                ][-2:]
+                if recent_questions:
+                    try:
+                        contextual = await asyncio.wait_for(
+                            runtime.rag.search(session, "\n".join([*recent_questions, data.text])), timeout=8
+                        )
+                    except Exception as exc:
+                        from sqlalchemy.exc import SQLAlchemyError
+
+                        if isinstance(exc, SQLAlchemyError):
+                            raise
+                        log.warning("contextual_search_unavailable type=%s", type(exc).__name__)
+                        contextual = []
+                    seen = {hit["id"] for hit in hits}
+                    hits.extend(hit for hit in contextual if hit["id"] not in seen)
+                relevant = [hit for hit in hits if hit["score"] >= settings().similarity_threshold]
+                if not relevant:
+                    answer, offer, reason = UNKNOWN, True, "low_similarity"
                 else:
-                    answer = result.answer
-                    sources = [
-                        {"id": h["id"], "title": h["title"], "source": h["source"]}
-                        for h in relevant
-                        if h["id"] in result.source_ids
+                    messages = [
+                        {
+                            "role": "user" if m.sender_type == "user" else "assistant",
+                            "content": m.content[:1500],
+                        }
+                        for m in history
+                        if m.sender_type in ("user", "assistant")
                     ]
+                    messages.append({"role": "user", "content": data.text})
+                    result = await runtime.llm.generate_answer(messages, relevant)
+                    allowed = {hit["id"] for hit in relevant}
+                    if result.insufficient or not result.source_ids or not set(result.source_ids) <= allowed:
+                        answer, offer, reason = UNKNOWN, True, "insufficient_evidence"
+                    else:
+                        answer = result.answer
+                        sources = [
+                            {"id": h["id"], "title": h["title"], "source": h["source"]}
+                            for h in relevant
+                            if h["id"] in result.source_ids
+                        ]
         except Exception as exc:
             # A failed SQL transaction cannot be used for saving a fallback; global DB handler rolls it back.
             from sqlalchemy.exc import SQLAlchemyError
@@ -129,6 +156,12 @@ async def chat(session, runtime, data):
         "offer_operator": offer,
         "reason": reason,
         "status": conversation.status,
+        "choices": shop.choices if shop else [],
+        "show_menu": restart or shop is not None or reason == "provider_unavailable",
+        "can_vote": conversation.status == "bot"
+        and not restart
+        and not offer
+        and (bool(sources) or (shop is not None and shop.can_vote)),
     }
     session.add(IncomingEvent(event_id=event_key, response=response))
     return response
@@ -150,10 +183,4 @@ async def feedback(session, data):
     else:
         session.add(Feedback(user_id=user.id, message_id=message.id, helpful=data.helpful))
     await session.flush()
-    negatives = await session.scalar(
-        select(func.count())
-        .select_from(Feedback)
-        .join(Message)
-        .where(Message.conversation_id == conversation.id, Feedback.helpful.is_(False))
-    )
-    return {"saved": True, "offer_operator": negatives >= 2 and conversation.status == "bot"}
+    return {"saved": True, "offer_operator": not data.helpful and conversation.status == "bot"}

@@ -94,7 +94,7 @@ async def test_feedback_ownership_and_repeated_negative(client, session):
     vote = {"telegram_id": 99, "message_id": one["message_id"], "helpful": False}
     assert (await client.post("/api/feedback", headers=BOT, json=vote)).status_code == 404
     vote["telegram_id"] = 42
-    assert not (await client.post("/api/feedback", headers=BOT, json=vote)).json()["offer_operator"]
+    assert (await client.post("/api/feedback", headers=BOT, json=vote)).json()["offer_operator"]
     await client.post("/api/feedback", headers=BOT, json=vote)
     vote["message_id"] = two["message_id"]
     assert (await client.post("/api/feedback", headers=BOT, json=vote)).json()["offer_operator"]
@@ -187,8 +187,8 @@ async def test_topic_change_keeps_current_question_sources(client, runtime):
     runtime.llm.generate_answer.return_value = Answer(
         answer="Демо-магазин", insufficient=False, source_ids=[9]
     )
-    result = (await send(client, "Какой у вас магазин?", "store")).json()
+    result = (await send(client, "Расскажи подробнее о вашем магазине", "store")).json()
     assert result["sources"][0]["id"] == 9
-    assert runtime.rag.search.await_args_list[0].args[1] == "Какой у вас магазин?"
+    assert runtime.rag.search.await_args_list[0].args[1] == "Расскажи подробнее о вашем магазине"
     context = runtime.llm.generate_answer.await_args.args[1]
     assert [hit["id"] for hit in context] == [9, 1]
