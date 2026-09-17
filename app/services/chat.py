@@ -91,7 +91,16 @@ async def chat(session, runtime, data):
         try:
             async with asyncio.timeout(45):
                 # Retrieve the current question first so a topic change cannot be buried by history.
-                hits = await runtime.rag.search(session, data.text)
+                primary_error = None
+                try:
+                    hits = await runtime.rag.search(session, data.text)
+                except Exception as exc:
+                    from sqlalchemy.exc import SQLAlchemyError
+
+                    if isinstance(exc, SQLAlchemyError):
+                        raise
+                    log.warning("current_search_unavailable type=%s", type(exc).__name__)
+                    primary_error, hits = exc, []
                 recent_questions = [
                     m.content[:800]
                     for m in history
@@ -111,6 +120,8 @@ async def chat(session, runtime, data):
                         contextual = []
                     seen = {hit["id"] for hit in hits}
                     hits.extend(hit for hit in contextual if hit["id"] not in seen)
+                if primary_error is not None and not hits:
+                    raise primary_error
                 relevant = [hit for hit in hits if hit["score"] >= settings().similarity_threshold]
                 if not relevant:
                     answer, offer, reason = UNKNOWN, True, "low_similarity"

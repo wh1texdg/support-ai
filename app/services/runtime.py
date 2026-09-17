@@ -35,7 +35,7 @@ def create_runtime():
         ),
         base_url=settings().polza_base_url if settings().polza_ai_api_key.get_secret_value() else None,
         http_client=(
-            httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0"))
+            httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(local_address="0.0.0.0", retries=2))
             if settings().polza_ai_api_key.get_secret_value()
             else None
         ),

@@ -110,3 +110,20 @@ async def test_bot_profile_includes_description_and_commands():
     for row in keyboard(show_menu=True).inline_keyboard:
         for button in row:
             assert len(button.callback_data.encode()) <= 64
+
+
+async def test_follow_up_uses_context_when_primary_lookup_times_out(client, runtime):
+    await send(client, "Sound Demo Pro", "subject")
+    hit = {
+        "id": 1,
+        "score": 0.9,
+        "title": "Sound Demo Pro",
+        "source": "product:11",
+        "content": "Гарантия 12 месяцев",
+    }
+    runtime.rag.search.side_effect = [TimeoutError(), [hit]]
+    runtime.llm.generate_answer.return_value = Answer(
+        answer="Гарантия 12 месяцев", insufficient=False, source_ids=[1]
+    )
+    result = (await send(client, "Какая у них гарантия?", "follow-up")).json()
+    assert not result["offer_operator"] and result["sources"]

@@ -28,6 +28,10 @@ class ShopReply:
     can_vote: bool = False
 
 
+def price_text(price):
+    return f"{price:,.2f}".replace(",", " ").replace(".", ",") + " ₽"
+
+
 async def shop_reply(session, text):
     value = text.strip().casefold().rstrip("?!.,")
     if value == "/continue":
@@ -69,7 +73,10 @@ async def shop_reply(session, text):
             f"{category}: выберите товар, чтобы увидеть цену, наличие и характеристики."
             if products
             else "В этой категории пока нет товаров. Откройте /catalog.",
-            [{"text": f"{p.name} — {p.price:,.0f} ₽"[:60], "action": f"/product {p.id}"} for p in products],
+            [
+                {"text": f"{p.name} — {price_text(p.price)}"[:60], "action": f"/product {p.id}"}
+                for p in products
+            ],
         )
     if value.startswith("/product "):
         try:
@@ -82,7 +89,7 @@ async def shop_reply(session, text):
         stock = f"В наличии: {p.stock} шт." if p.stock else "Сейчас нет в наличии."
         specs = "\n".join(f"{k}: {v}" for k, v in p.specifications.items() if k != "демонстрационные_данные")
         return ShopReply(
-            f"{p.name}\nЦена: {p.price:,.2f} ₽\n{stock}\n{specs}"[:2600]
+            f"{p.name}\nЦена: {price_text(p.price)}\n{stock}\n{specs}"[:2600]
             + "\n\nМожно задать уточняющий вопрос об этом товаре. Для покупки в демо оплата недоступна.",
             subject=f"Расскажи о товаре {p.name}",
             can_vote=True,
